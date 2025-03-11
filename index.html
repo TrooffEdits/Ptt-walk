@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Low Bitrate PTT</title>
+  <style>
+    body { font-family: sans-serif; text-align: center; padding: 50px; background: #111; color: #eee; }
+    button { padding: 20px; font-size: 18px; border-radius: 10px; cursor: pointer; background-color: #333; color: white; }
+    #status { margin-top: 20px; }
+  </style>
+</head>
+<body>
+
+  <h1>Low Bitrate PTT (WebRTC)</h1>
+
+  <button id="talkBtn">Hold to Talk</button>
+  <div id="status">Disconnected</div>
+
+  <script>
+    const talkBtn = document.getElementById('talkBtn');
+    const status = document.getElementById('status');
+
+    let localConnection, remoteConnection;
+    let localStream;
+    let audioSender;
+
+    async function setupConnection() {
+      localConnection = new RTCPeerConnection({
+        iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+      });
+
+      remoteConnection = new RTCPeerConnection();
+
+      // Get mic input
+      localStream = await navigator.mediaDevices.getUserMedia({ audio: { sampleRate: 8000, channelCount: 1 } });
+
+      // Add audio track
+      audioSender = localConnection.addTrack(localStream.getAudioTracks()[0], localStream);
+
+      // SDP manipulation to force low bitrate
+      localConnection.createOffer().then(offer => {
+        let sdp = offer.sdp.replace("useinbandfec=1", "useinbandfec=1;maxaveragebitrate=4000"); // 4kbps!
+        localConnection.setLocalDescription({ type: "offer", sdp: sdp });
+        remoteConnection.setRemoteDescription({ type: "offer", sdp: sdp });
+        remoteConnection.createAnswer().then(answer => {
+          remoteConnection.setLocalDescription(answer);
+          localConnection.setRemoteDescription(answer);
+        });
+      });
+
+      // Receive audio stream
+      remoteConnection.ontrack = (event) => {
+        let audio = document.createElement('audio');
+        audio.srcObject = event.streams[0];
+        audio.play();
+        status.textContent = "Connected!";
+      };
+    }
+
+    // Push-to-talk button events
+    talkBtn.addEventListener('mousedown', () => {
+      if (!localStream) return;
+      localStream.getAudioTracks()[0].enabled = true;
+      status.textContent = "Talking...";
+    });
+
+    talkBtn.addEventListener('mouseup', () => {
+      if (!localStream) return;
+      localStream.getAudioTracks()[0].enabled = false;
+      status.textContent = "Muted.";
+    });
+
+    talkBtn.addEventListener('touchstart', () => {
+      if (!localStream) return;
+      localStream.getAudioTracks()[0].enabled = true;
+      status.textContent = "Talking...";
+    });
+
+    talkBtn.addEventListener('touchend', () => {
+      if (!localStream) return;
+      localStream.getAudioTracks()[0].enabled = false;
+      status.textContent = "Muted.";
+    });
+
+    setupConnection();
+  </script>
+
+</body>
+</html>
